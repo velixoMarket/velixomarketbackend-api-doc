@@ -1,6 +1,8 @@
 # VelixoMarket Backend API Documentation
 
-**Base URL**: `http://localhost:3001` (development) | `https://your-deployment-url` | `https://velixov2-production.up.railway.app` (production)
+**Base URL**:
+localhost: `http://localhost:3001` (development) | 
+`https://velixov2-production.up.railway.app` (production)
 
 **Chain**: FOGO (Solana fork) — native token is FOGO, not SOL.
 
