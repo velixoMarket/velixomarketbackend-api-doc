@@ -1,6 +1,6 @@
 # VelixoMarket Backend API Documentation
 
-**Base URL**: `http://localhost:3001` (development) | `https://your-deployment-url` | `https://velixov2-production.up.railway.app` (production)
+**Base URL**: `https://velixov2-production.up.railway.app` (production)
 
 **Chain**: FOGO (Solana fork) — native token is FOGO, not SOL.
 
@@ -30,6 +30,10 @@
   - [V2 Transactions](#v2-transactions)
   - [V2 Collections](#v2-collections)
   - [V2 Activity](#v2-activity)
+  - [V2 Stats](#v2-stats)
+  - [V2 Offers](#v2-offers)
+  - [V2 NFT](#v2-nft)
+  - [V2 Owner](#v2-owner)
 - [Admin Endpoints](#admin-endpoints)
 - [Environment Variables](#environment-variables)
 - [Caching](#caching)
@@ -1330,6 +1334,37 @@ Cancel a collection offer you made.
 
 ---
 
+#### `POST /api/v2/transactions/sell-now` (V2)
+
+Convenience endpoint for "Sell Now" — auto-resolves the highest active collection offer and builds an accept-collection-offer transaction in one call.
+
+**Body:**
+
+| Field               | Type   | Required | Description                        |
+| ------------------- | ------ | -------- | ---------------------------------- |
+| `nftOwner`          | string | yes      | Seller's wallet address            |
+| `nftAddress`        | string | yes      | NFT to sell                        |
+| `collectionAddress` | string | yes      | Collection address                 |
+| `royaltyRecipient`  | string | no       | Optional royalty recipient override |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "transaction": "base64-encoded-transaction...",
+  "offer": {
+    "offerer": "OffererWallet...",
+    "amountPerNft": "1500000000",
+    "collectionOfferPda": "OfferPDA..."
+  }
+}
+```
+
+Returns `404` if no active collection offers exist.
+
+---
+
 ### V2 Collections
 
 Fetch collection data with V2 dual-standard support.
@@ -1408,6 +1443,85 @@ Get V2 stats for a specific collection.
 #### `GET /api/v2/collections/:collectionMint/listings`
 
 Get all V2 listings in a collection.
+
+---
+
+#### `GET /api/v2/collections/:collectionMint/holders`
+
+Get full holder list with percentages, top holders, and distribution buckets.
+
+**Path Parameters:**
+
+| Param            | Type   | Description             |
+| ---------------- | ------ | ----------------------- |
+| `collectionMint` | string | Collection mint address |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "uniqueHolders": 234,
+  "activeSupply": 500,
+  "topHolders": [
+    { "address": "Wallet...", "count": 15, "percentage": 3.0 }
+  ],
+  "holderDistribution": {
+    "1": 150,
+    "2-4": 50,
+    "5-9": 20,
+    "10-19": 10,
+    "20-49": 3,
+    "50-99": 1,
+    "100+": 0
+  },
+  "data": [
+    { "address": "Wallet...", "count": 15, "percentage": 3.0 }
+  ]
+}
+```
+
+---
+
+#### `GET /api/v2/collections/:collectionMint/nfts`
+
+Get NFTs in a collection from on-chain listings and activity data.
+
+**Path Parameters:**
+
+| Param            | Type   | Description             |
+| ---------------- | ------ | ----------------------- |
+| `collectionMint` | string | Collection mint address |
+
+**Query Parameters:**
+
+| Param    | Type   | Default | Max | Description          |
+| -------- | ------ | ------- | --- | -------------------- |
+| `limit`  | number | 100     | 500 | Number of results    |
+| `offset` | number | 0       | —   | Pagination offset    |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "pagination": {
+    "total": 500,
+    "limit": 100,
+    "offset": 0,
+    "hasMore": true
+  },
+  "data": [
+    {
+      "mint": "NFTMintAddress...",
+      "collectionMint": "CollectionAddress...",
+      "isListed": true,
+      "price": "1500000000",
+      "seller": "SellerWallet..."
+    }
+  ]
+}
+```
 
 ---
 
@@ -1510,13 +1624,297 @@ curl "http://localhost:3001/api/v2/activity/recent?limit=50&sort=desc"
 
 ---
 
+### V2 Stats
+
+Marketplace-wide and per-collection statistics with multi-period volume breakdowns.
+
+#### `GET /api/v2/stats/marketplace`
+
+Get V2 marketplace-wide statistics including listings, collections, and volume across all time periods.
+
+**Example:**
+
+```bash
+curl http://localhost:3001/api/v2/stats/marketplace
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "totalListings": 150,
+    "activeListings": 120,
+    "totalCollections": 5,
+    "volume": {
+      "24h": { "fogo": 45.2, "lamports": "45200000000", "sales": 8 },
+      "3d": { "fogo": 120.5, "lamports": "120500000000", "sales": 22 },
+      "7d": { "fogo": 310.8, "lamports": "310800000000", "sales": 55 },
+      "30d": { "fogo": 1200.3, "lamports": "1200300000000", "sales": 210 },
+      "allTime": { "fogo": 5400.0, "lamports": "5400000000000", "sales": 890 }
+    },
+    "updatedAt": 1700000000000
+  }
+}
+```
+
+---
+
+#### `GET /api/v2/stats/collection/:collectionMint`
+
+Get comprehensive V2 stats for a specific collection with multi-period volumes.
+
+**Path Parameters:**
+
+| Param            | Type   | Description             |
+| ---------------- | ------ | ----------------------- |
+| `collectionMint` | string | Collection mint address |
+
+**Example:**
+
+```bash
+curl http://localhost:3001/api/v2/stats/collection/DINOCollectionAddress...
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "floorPrice": 1.5,
+    "topBid": 1.2,
+    "listed": 42,
+    "volumeChange24h": 12.5,
+    "floorChange1d": -0.05,
+    "floorChange7d": 0.12,
+    "owners": 234,
+    "supply": 42,
+    "collectionMint": "DINOCollectionAddress...",
+    "volume": {
+      "24h": { "fogo": 15.2, "sales": 3 },
+      "3d": { "fogo": 40.5, "lamports": "40500000000", "sales": 8 },
+      "7d": { "fogo": 95.8, "sales": 18 },
+      "30d": { "fogo": 350.3, "lamports": "350300000000", "sales": 65 },
+      "allTime": { "fogo": 1200.0, "lamports": "1200000000000", "sales": 220 }
+    }
+  }
+}
+```
+
+---
+
+#### `GET /api/v2/stats/volume`
+
+Get all marketplace volumes in a single call (24h, 3d, 7d, 30d, allTime).
+
+**Example:**
+
+```bash
+curl http://localhost:3001/api/v2/stats/volume
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "24h": { "fogo": 45.2, "lamports": "45200000000", "sales": 8 },
+    "3d": { "fogo": 120.5, "lamports": "120500000000", "sales": 22 },
+    "7d": { "fogo": 310.8, "lamports": "310800000000", "sales": 55 },
+    "30d": { "fogo": 1200.3, "lamports": "1200300000000", "sales": 210 },
+    "allTime": { "fogo": 5400.0, "lamports": "5400000000000", "sales": 890 }
+  }
+}
+```
+
+---
+
+### V2 Offers
+
+Fetch individual NFT offers, collection offers, and user offer data from on-chain V2 program accounts.
+
+#### `GET /api/v2/offers/nft/:mint`
+
+Get all active offers for a specific NFT, sorted by amount descending.
+
+**Path Parameters:**
+
+| Param  | Type   | Description      |
+| ------ | ------ | ---------------- |
+| `mint` | string | NFT mint address |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "count": 2,
+  "data": [
+    {
+      "address": "OfferPDA...",
+      "offerer": "OffererWallet...",
+      "nftOwner": "OwnerWallet...",
+      "nftAddress": "NFTMintAddress...",
+      "amount": "1500000000",
+      "isActive": true,
+      "expiresAt": "1700000000",
+      "createdAt": "1699900000"
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /api/v2/offers/collection/:collectionMint`
+
+Get all active collection offers for a specific collection.
+
+**Path Parameters:**
+
+| Param            | Type   | Description             |
+| ---------------- | ------ | ----------------------- |
+| `collectionMint` | string | Collection mint address |
+
+---
+
+#### `GET /api/v2/offers/collection/:collectionMint/highest`
+
+Get the highest collection offer for a specific collection.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": { "...offer object..." },
+  "highestBid": 1.5
+}
+```
+
+---
+
+#### `GET /api/v2/offers/user/:userAddress`
+
+Get all individual NFT offers made by a user.
+
+**Path Parameters:**
+
+| Param         | Type   | Description    |
+| ------------- | ------ | -------------- |
+| `userAddress` | string | Wallet address |
+
+---
+
+#### `GET /api/v2/offers/received/:userAddress`
+
+Get all offers received by a user (on NFTs they own).
+
+---
+
+#### `GET /api/v2/offers/collection/user/:userAddress`
+
+Get all collection offers made by a user.
+
+---
+
+### V2 NFT
+
+Individual NFT lookup with metadata, listing status, and activity history.
+
+#### `GET /api/v2/nft/:mint`
+
+Get full details for a single NFT.
+
+**Path Parameters:**
+
+| Param  | Type   | Description      |
+| ------ | ------ | ---------------- |
+| `mint` | string | NFT mint address |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "mint": "NFTMintAddress...",
+    "name": "DINO #123",
+    "symbol": "DINO",
+    "imageUrl": "https://...",
+    "description": "...",
+    "collectionAddress": "CollectionAddress...",
+    "collectionVerified": true,
+    "nftStandard": "token_metadata",
+    "owner": "OwnerWallet...",
+    "isListed": true,
+    "listing": {
+      "price": "1500000000",
+      "seller": "SellerWallet...",
+      "listingPda": "ListingPDA..."
+    },
+    "activity": [
+      {
+        "type": "NftListed",
+        "from": "SellerWallet...",
+        "to": null,
+        "price": "1500000000",
+        "signature": "tx-signature...",
+        "timestamp": 1699900000
+      }
+    ]
+  }
+}
+```
+
+---
+
+### V2 Owner
+
+Fetch all NFTs owned by a wallet address.
+
+#### `GET /api/v2/owner/:address`
+
+Get all NFTs owned by an address (fetched from on-chain), with listing status.
+
+**Path Parameters:**
+
+| Param     | Type   | Description    |
+| --------- | ------ | -------------- |
+| `address` | string | Wallet address |
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "count": 5,
+  "data": [
+    {
+      "mint": "NFTMintAddress...",
+      "name": "DINO #123",
+      "imageUrl": "https://...",
+      "collectionAddress": "CollectionAddress...",
+      "nftStandard": "token_metadata",
+      "isListed": true,
+      "listingPrice": "1500000000"
+    }
+  ]
+}
+```
+
+---
+
 ## Admin Endpoints
 
-Server management endpoints. `GET /api/admin/status` is public; all others require authentication.
+Server management endpoints. All admin endpoints require authentication via `X-API-Key` header.
 
 #### `GET /api/admin/status`
 
-Get server and indexer status. **No authentication required.**
+Get server and indexer status. **Requires authentication.**
 
 **Response:**
 
@@ -1595,6 +1993,12 @@ curl -X POST http://localhost:3001/api/admin/indexer/run \
 | `RATE_LIMIT_MAX_REQUESTS`     | `100`                               | Max requests per window                       |
 | `INDEXER_INTERVAL_MS`         | `30000`                             | Event indexer poll interval (ms)              |
 | `ADMIN_API_KEY`               | —                                   | API key for admin endpoints                   |
+| `DB_HOST`                     | `localhost`                         | MySQL database host                           |
+| `DB_PORT`                     | `3306`                              | MySQL database port                           |
+| `DB_USER`                     | `root`                              | MySQL database user                           |
+| `DB_PASSWORD`                 | —                                   | MySQL database password                       |
+| `DB_NAME`                     | `velixomarket`                      | MySQL database name                           |
+| `DB_CONNECTION_LIMIT`         | `10`                                | MySQL connection pool size                    |
 
 ---
 
@@ -1638,7 +2042,8 @@ Cache can be manually cleared via `POST /api/admin/cache/clear`.
 ## Notes
 
 - All prices/amounts on-chain are in **lamports** (1 FOGO = 1,000,000,000 lamports). Some response fields include both lamport and FOGO-denominated values for convenience.
-- The backend runs a **blockchain event indexer** that polls the FOGO chain every 30 seconds for marketplace events (sales, listings, offers). This powers the activity and stats endpoints.
-- Activity and sales history are stored **in memory** (max 10,000 entries each, auto-trimmed). They reset on server restart.
+- The backend runs a **blockchain event indexer** that polls the FOGO chain every 15 seconds for marketplace events (sales, listings, offers). This powers the activity and stats endpoints.
+- Sales, activity history, floor price snapshots, and collection metadata are persisted in a **MySQL database**. Data survives server restarts with no entry limits.
+- The database schema is auto-created on startup (5 tables: `sales`, `activities`, `floor_price_snapshots`, `collections`, `indexer_locks`).
 - **V2 endpoints are the recommended integration path** as they support both Token Metadata and Metaplex Core NFT standards.
 - The DINO collection is VelixoMarket's flagship collection on the FOGO chain.
